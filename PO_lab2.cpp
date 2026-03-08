@@ -2,6 +2,8 @@
 #include <vector>
 #include <cstdlib>
 #include <ctime>
+#include <thread>
+#include <mutex>
 
 std::vector<int> GenerateArray(int n)
 {
@@ -63,21 +65,97 @@ void PrintResult(const Result& r)
         std::cout << "min not found\n";
 }
 
+void WorkerMutex(
+    const std::vector<int>& a,
+    int start,
+    int end,
+    int& globalCount,
+    int& globalMin,
+    bool& globalFound,
+    std::mutex& mtx)
+{
+    for (int i = start; i < end; i++) {
+
+        if (a[i] % 21 == 0) {
+
+            mtx.lock();
+
+            globalCount++;
+
+            if (!globalFound || a[i] < globalMin) {
+                globalMin = a[i];
+                globalFound = true;
+            }
+
+            mtx.unlock();
+        }
+    }
+}
+
+Result FindParallelMutex(const std::vector<int>& a, int threads)
+{
+    int n = (int)a.size();
+
+    int globalCount = 0;
+    int globalMin = 0;
+    bool globalFound = false;
+
+    std::mutex mtx;
+    std::vector<std::thread> t;
+
+    int part = n / threads;
+    int start = 0;
+
+    for (int i = 0; i < threads; i++) {
+
+        int end = (i == threads - 1) ? n : start + part;
+
+        t.push_back(std::thread(
+            WorkerMutex,
+            std::cref(a),
+            start,
+            end,
+            std::ref(globalCount),
+            std::ref(globalMin),
+            std::ref(globalFound),
+            std::ref(mtx)
+        ));
+
+        start = end;
+    }
+
+    for (int i = 0; i < (int)t.size(); i++)
+        t[i].join();
+
+    Result r;
+    r.count = globalCount;
+    r.minValue = globalMin;
+    r.found = globalFound;
+
+    return r;
+}
+
 int main()
 {
     std::srand(std::time(nullptr));
 
     int N = 10;
+    int threads = 4;
 
     auto a = GenerateArray(N);
 
     std::cout << "Array:\n";
     PrintArray(a);
 
-    auto result = FindSequential(a);
+    auto r1 = FindSequential(a);
 
-    std::cout << "\nSequential result:\n";
-    PrintResult(result);
+    std::cout << "\nSequential:\n";
+    PrintResult(r1);
+
+    auto r2 = FindParallelMutex(a, threads);
+
+    std::cout << "\nMutex parallel:\n";
+    PrintResult(r2);
 
     return 0;
 }
