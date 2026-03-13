@@ -4,6 +4,8 @@
 #include <ctime>
 #include <thread>
 #include <mutex>
+#include <atomic>
+#include <climits>
 
 std::vector<int> GenerateArray(int n)
 {
@@ -135,17 +137,88 @@ Result FindParallelMutex(const std::vector<int>& a, int threads)
     return r;
 }
 
+void WorkerAtomicCAS(
+    const std::vector<int>& a,
+    int start,
+    int end,
+    std::atomic<int>& globalCount,
+    std::atomic<int>& globalMin)
+{
+    for (int i = start; i < end; i++) {
+
+        if (a[i] % 21 == 0) {
+
+            int oldCount;
+            int newCount;
+
+            do {
+                oldCount = globalCount.load();
+                newCount = oldCount + 1;
+            } while (!globalCount.compare_exchange_weak(oldCount, newCount));
+
+            int oldMin;
+
+            do {
+                oldMin = globalMin.load();
+
+                if (a[i] >= oldMin)
+                    break;
+
+            } while (!globalMin.compare_exchange_weak(oldMin, a[i]));
+        }
+    }
+}
+
+Result FindParallelAtomicCAS(const std::vector<int>& a, int threads)
+{
+    int n = (int)a.size();
+
+    std::atomic<int> globalCount(0);
+    std::atomic<int> globalMin(INT_MAX);
+
+    std::vector<std::thread> t;
+
+    int part = n / threads;
+    int start = 0;
+
+    for (int i = 0; i < threads; i++) {
+
+        int end = (i == threads - 1) ? n : start + part;
+
+        t.push_back(std::thread(
+            WorkerAtomicCAS,
+            std::cref(a),
+            start,
+            end,
+            std::ref(globalCount),
+            std::ref(globalMin)
+        ));
+
+        start = end;
+    }
+
+    for (int i = 0; i < (int)t.size(); i++)
+        t[i].join();
+
+    Result r;
+    r.count = globalCount.load();
+    r.minValue = globalMin.load();
+    r.found = (r.count > 0);
+
+    return r;
+}
+
 int main()
 {
     std::srand(std::time(nullptr));
 
-    int N = 10;
+    int N = 100000;
     int threads = 4;
 
     auto a = GenerateArray(N);
 
-    std::cout << "Array:\n";
-    PrintArray(a);
+    //std::cout << "Array:\n";
+    //PrintArray(a);
 
     auto r1 = FindSequential(a);
 
@@ -156,6 +229,11 @@ int main()
 
     std::cout << "\nMutex parallel:\n";
     PrintResult(r2);
+
+    auto r3 = FindParallelAtomicCAS(a, threads);
+
+    std::cout << "\nAtomic CAS\n";
+    PrintResult(r3);
 
     return 0;
 }
