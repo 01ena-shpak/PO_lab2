@@ -58,16 +58,6 @@ Result FindSequential(const std::vector<int>& a)
     return r;
 }
 
-void PrintResult(const Result& r)
-{
-    std::cout << "count = " << r.count << "\n";
-
-    if (r.found)
-        std::cout << "min = " << r.minValue << "\n";
-    else
-        std::cout << "min not found\n";
-}
-
 void WorkerMutex(
     const std::vector<int>& a,
     int start,
@@ -246,7 +236,7 @@ int main()
 {
     std::srand(std::time(nullptr));
 
-    int THREADS = 4;
+    int THREADS = 2;
 
     std::cout << "Physical cores = 10, Logical processors = 16\n\n";
 
